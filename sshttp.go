@@ -3,14 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"io"
-	"strings"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
 	"os/user"
+	"strings"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -28,71 +28,19 @@ func init() {
 	flag.IntVar(&port, "port", 8123, "Local proxy port")
 }
 
-func proxyconn(r io.ReadCloser, w io.Writer) {
-	n, err := io.Copy(w, r)
-	log.Printf("io.Copy -> %d, %v // closing", n, err)
-	_ = r.Close()
-}
-
-func main() {
-	flag.Parse()
-	host = flag.Arg(0)
-
-	if host == "" {
-		log.Fatal("No ssh hostname specified.")
-	}
-	cli := newClient()
-
-	sshTransport := &http.Transport{
-		Dial: cli.Dial,
-	}
-
-	proxy := httputil.ReverseProxy{
-		Director: func(r *http.Request) {
-			log.Print(r)
-		},
-		Transport: sshTransport,
-	}
-
-	laddr := fmt.Sprintf("localhost:%d", port)
-
-	srv := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "CONNECT" {
-			log.Printf("Connecting to %s", r.URL.Host)
-			s, err := cli.Dial("tcp", r.URL.Host)
-			if err != nil {
-				w.WriteHeader(http.StatusBadGateway)
-				w.Write([]byte(err.Error()))
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-			c, _, err := w.(http.Hijacker).Hijack()
-			log.Printf("client: %t", c)
-			log.Printf("server: %t", s)
-			go proxyconn(c, s)
-			go proxyconn(s, c)
-			return
-		}
-		proxy.ServeHTTP(w, r)
-	})
-
-	log.Fatal(http.ListenAndServe(laddr, srv))
-}
-
-func newClient() *ssh.Client {
+func sshClient() *ssh.Client {
 	agentconn, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK"))
 	if err != nil {
 		log.Fatal("ssh-agent connection:", err)
 	}
 
-	agentauth := ssh.PublicKeysCallback(
-		func() ([]ssh.Signer, error) {
-			return agent.NewClient(agentconn).Signers()
-		})
+	aclient := agent.NewClient(agentconn)
 
 	conf := &ssh.ClientConfig{
 		User: username,
-		Auth: []ssh.AuthMethod{agentauth},
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeysCallback(aclient.Signers),
+		},
 	}
 
 	if strings.Index(host, ":") < 0 {
@@ -105,4 +53,59 @@ func newClient() *ssh.Client {
 	}
 
 	return cli
+}
+
+func proxyconn(r io.ReadCloser, w io.Writer) {
+	_, _ = io.Copy(w, r)
+	_ = r.Close()
+}
+
+func connectProxy(sshc *ssh.Client, h http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "CONNECT" {
+			h.ServeHTTP(w, r)
+			return
+		}
+		host := r.URL.Host
+		if strings.Index(host, ":") < 0 {
+			host += ":80"
+		}
+		sconn, err := sshc.Dial("tcp", host)
+		if err != nil {
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusBadGateway)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		cconn, _, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			cconn.Close()
+			sconn.Close()
+			log.Print("CONNECT hijack error: ", err)
+			return
+		}
+		go proxyconn(cconn, sconn)
+		go proxyconn(sconn, cconn)
+	}
+}
+
+func main() {
+	flag.Parse()
+	host = flag.Arg(0)
+
+	if host == "" {
+		log.Fatal("No ssh hostname specified.")
+	}
+	sshc := sshClient()
+
+	proxy := httputil.ReverseProxy{
+		Director:  func(r *http.Request) {},
+		Transport: &http.Transport{Dial: sshc.Dial},
+	}
+
+	laddr := fmt.Sprintf("localhost:%d", port)
+
+	log.Fatal(http.ListenAndServe(laddr, connectProxy(sshc, &proxy)))
 }
