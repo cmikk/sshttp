@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 func sshClient(username, host string) (*ssh.Client, error) {
@@ -16,12 +17,17 @@ func sshClient(username, host string) (*ssh.Client, error) {
 	}
 
 	aclient := agent.NewClient(agentconn)
+	callback, err := knownhosts.New(os.Getenv("HOME") + "/.ssh/known_hosts")
+	if err != nil {
+		callback = ssh.InsecureIgnoreHostKey()
+	}
 
 	conf := &ssh.ClientConfig{
 		User: username,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeysCallback(aclient.Signers),
 		},
+		HostKeyCallback: callback,
 	}
 
 	if strings.Index(host, ":") < 0 {
