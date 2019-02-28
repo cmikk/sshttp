@@ -98,8 +98,10 @@ func main() {
 		cmd.Run()
 	}
 
-	args := append([]string{"-foreground"}, os.Args[1:]...)
-	cmd := exec.Command(os.Args[0], args...)
+	cmd := exec.Command(os.Args[0], "-foreground",
+		"-port", strconv.FormatInt(int64(*port), 10),
+		"-user", *username,
+		hostname)
 	outp, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Fatal(err)
