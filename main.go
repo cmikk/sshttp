@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"os/user"
@@ -56,19 +57,24 @@ func main() {
 	if len(command) > 0 || *foreground {
 		sshc, err := sshClient(*username, hostname)
 		if err != nil {
-			log.Fatal("ssh-client:", err)
+			log.Fatal("ssh: ", err)
+		}
+
+		l, err := net.Listen("tcp", proxyAddr)
+		if err != nil {
+			log.Fatal("http: ", err)
 		}
 
 		if *foreground {
-			err := httpProxy(sshc, proxyAddr)
+			err := httpProxy(sshc, l)
 			if err != nil {
-				log.Fatal("http-proxy", err)
+				log.Fatal("proxy: ", err)
 			}
 			return
 		}
 
 		go func() {
-			log.Fatal("http-proxy:", httpProxy(sshc, proxyAddr))
+			log.Fatal("proxy: ", httpProxy(sshc, l))
 		}()
 		os.Setenv("http_proxy", proxyAddr)
 		os.Setenv("https_proxy", proxyAddr)

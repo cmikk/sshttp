@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"strings"
@@ -46,11 +47,11 @@ func connectProxy(sshc *ssh.Client, h http.Handler) http.HandlerFunc {
 	}
 }
 
-func httpProxy(sshc *ssh.Client, laddr string) error {
+func httpProxy(sshc *ssh.Client, l net.Listener) error {
 	proxy := httputil.ReverseProxy{
 		Director:  func(r *http.Request) {},
 		Transport: &http.Transport{Dial: sshc.Dial},
 	}
 
-	return http.ListenAndServe(laddr, connectProxy(sshc, &proxy))
+	return http.Serve(l, connectProxy(sshc, &proxy))
 }
