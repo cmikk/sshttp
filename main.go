@@ -32,7 +32,7 @@ func printConfig(pc proxyConfig) {
 	fmt.Printf("echo sshttp running, pid %d;\n", pc.ProxyPid)
 }
 
-func runWithConfig(pc proxyConfig, command []string) {
+func runWithConfig(pc proxyConfig, command []string) error {
 	os.Setenv("http_proxy", pc.ProxyAddr)
 	os.Setenv("https_proxy", pc.ProxyAddr)
 	os.Setenv("PROXY_PID", strconv.FormatInt(int64(pc.ProxyPid), 10))
@@ -40,7 +40,7 @@ func runWithConfig(pc proxyConfig, command []string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
-	cmd.Run()
+	return cmd.Run()
 }
 
 func main() {
@@ -72,7 +72,12 @@ func main() {
 
 		command := flag.Args()
 		if len(command) > 0 {
-			runWithConfig(pc, command)
+			if err := runWithConfig(pc, command); err != nil {
+				if _, ok := err.(*exec.ExitError); !ok {
+					log.Println("command:", err)
+				}
+				os.Exit(1)
+			}
 			return
 		}
 
@@ -141,7 +146,12 @@ func main() {
 		go func() {
 			log.Fatal("proxy: ", httpProxy(sshc, l))
 		}()
-		runWithConfig(pc, command)
+		if err := runWithConfig(pc, command); err != nil {
+			if _, ok := err.(*exec.ExitError); !ok {
+				log.Println("command: ", err)
+			}
+			os.Exit(1)
+		}
 		return
 	}
 
