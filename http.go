@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -70,4 +71,23 @@ func httpProxy(sshc *ssh.Client, l net.Listener) error {
 	}))
 
 	return http.Serve(l, connectProxy(sshc))
+}
+
+func queryConfig(port int) (pc proxyConfig, err error) {
+	var resp *http.Response
+	cli := &http.Client{}
+
+	resp, err = cli.Get(fmt.Sprintf("http://localhost:%d/config", port))
+	if err != nil {
+		return
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("http: %s", resp.Status)
+		return
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	err = dec.Decode(&pc)
+	return
 }

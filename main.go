@@ -19,6 +19,30 @@ type proxyConfig struct {
 	ProxyPid  int
 }
 
+func printConfig(pc proxyConfig) {
+	if strings.HasSuffix(os.Getenv("SHELL"), "csh") {
+		fmt.Printf("setenv http_proxy %s;\n", pc.ProxyAddr)
+		fmt.Printf("setenv https_proxy %s;\n", pc.ProxyAddr)
+		fmt.Printf("setenv SSHTTP_PID %d;\n", pc.ProxyPid)
+	} else {
+		fmt.Printf("http_proxy=%s; export http_proxy;\n", pc.ProxyAddr)
+		fmt.Printf("https_proxy=%s; export https_proxy;\n", pc.ProxyAddr)
+		fmt.Printf("SSHTTP_PID=%d; export SSHTTP_PID;\n", pc.ProxyPid)
+	}
+	fmt.Printf("echo sshttp running, pid %d;\n", pc.ProxyPid)
+}
+
+func runWithConfig(pc proxyConfig, command []string) {
+	os.Setenv("http_proxy", pc.ProxyAddr)
+	os.Setenv("https_proxy", pc.ProxyAddr)
+	os.Setenv("PROXY_PID", strconv.FormatInt(int64(pc.ProxyPid), 10))
+	cmd := exec.Command(command[0], command[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stdin = os.Stdin
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+}
+
 func main() {
 	u, err := user.Current()
 	if err != nil {
@@ -29,8 +53,32 @@ func main() {
 	port := flag.Int("port", 8123, "Local proxy port")
 	foreground := flag.Bool("foreground", false, "Run in foreground")
 	kill := flag.Bool("kill", false, "Kill running sshttp")
+	query := flag.Bool("query", false, "Query running sshttp for proxy config")
 
 	flag.Parse()
+
+	if *query {
+		pc, err := queryConfig(*port)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if *kill {
+			if err := syscall.Kill(pc.ProxyPid, syscall.SIGKILL); err != nil {
+				log.Fatal("Kill failed:", err.Error())
+			}
+			return
+		}
+
+		command := flag.Args()
+		if len(command) > 0 {
+			runWithConfig(pc, command)
+			return
+		}
+
+		printConfig(pc)
+		return
+	}
 
 	if *kill {
 		pid, err := strconv.Atoi(os.Getenv("SSHTTP_PID"))
@@ -44,6 +92,11 @@ func main() {
 		return
 	}
 
+	pc := proxyConfig{
+		ProxyAddr: fmt.Sprintf("localhost:%d", *port),
+		ProxyPid:  os.Getpid(),
+	}
+
 	hostname := flag.Arg(0)
 
 	if hostname == "" {
@@ -51,8 +104,6 @@ func main() {
 	}
 
 	command := flag.Args()[1:]
-
-	proxyAddr := fmt.Sprintf("localhost:%d", *port)
 
 	if strings.Index(hostname, "@") > 0 {
 		l := strings.Split(hostname, "@")
@@ -66,7 +117,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		l, err := net.Listen("tcp", proxyAddr)
+		l, err := net.Listen("tcp", pc.ProxyAddr)
 		if err != nil {
 			log.Fatal("http: ", err)
 		}
@@ -90,12 +141,8 @@ func main() {
 		go func() {
 			log.Fatal("proxy: ", httpProxy(sshc, l))
 		}()
-		os.Setenv("http_proxy", proxyAddr)
-		os.Setenv("https_proxy", proxyAddr)
-		cmd := exec.Command(command[0], command[1:]...)
-		cmd.Stdout = os.Stdout
-		cmd.Stdin = os.Stdin
-		cmd.Run()
+		runWithConfig(pc, command)
+		return
 	}
 
 	cmd := exec.Command(os.Args[0], "-foreground",
@@ -115,15 +162,6 @@ func main() {
 	if len(b) == 0 {
 		os.Exit(1)
 	}
-	pid := cmd.Process.Pid
-	if strings.HasSuffix(os.Getenv("SHELL"), "csh") {
-		fmt.Printf("setenv http_proxy %s;\n", proxyAddr)
-		fmt.Printf("setenv https_proxy %s;\n", proxyAddr)
-		fmt.Printf("setenv SSHTTP_PID %d;\n", pid)
-	} else {
-		fmt.Printf("http_proxy=%s; export http_proxy;\n", proxyAddr)
-		fmt.Printf("https_proxy=%s; export https_proxy;\n", proxyAddr)
-		fmt.Printf("SSHTTP_PID=%d; export SSHTTP_PID;\n", pid)
-	}
-	fmt.Printf("echo sshttp running, pid %d;\n", pid)
+	pc.ProxyPid = cmd.Process.Pid
+	printConfig(pc)
 }
