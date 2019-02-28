@@ -12,7 +12,7 @@ Usage
 -----
 sshttp may be used to provide a proxy environment for one command:
 
-	sshttp user@host comand args ...
+	sshttp user@host command args ...
 
 or it may be used to set up an environment, in the style of ssh-agent:
 
@@ -21,3 +21,11 @@ or it may be used to set up an environment, in the style of ssh-agent:
 The running proxy in the latter setup can be killed with:
 
 	sshttp -kill
+
+An existing sshttp proxy can be used conveniently with:
+
+	sshttp -query command args...
+
+or used to set up proxy environment variables with:
+
+	eval $(sshttp -query)
