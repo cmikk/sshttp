@@ -14,6 +14,11 @@ import (
 	"syscall"
 )
 
+type proxyConfig struct {
+	ProxyAddr string
+	ProxyPid  int
+}
+
 func main() {
 	u, err := user.Current()
 	if err != nil {
