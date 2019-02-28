@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -57,7 +58,7 @@ func main() {
 	if len(command) > 0 || *foreground {
 		sshc, err := sshClient(*username, hostname)
 		if err != nil {
-			log.Fatal("ssh: ", err)
+			log.Fatal(err)
 		}
 
 		l, err := net.Listen("tcp", proxyAddr)
@@ -66,6 +67,14 @@ func main() {
 		}
 
 		if *foreground {
+			//
+			// Write a zero-width space to stdout as a signal to our
+			// caller that we have successfully set up the ssh connection
+			// and http proxy listener. If called manually with -foreground,
+			// this space is invisible to the user.
+			//
+			os.Stdout.Write([]byte("\uFEFF"))
+			os.Stdout.Close()
 			err := httpProxy(sshc, l)
 			if err != nil {
 				log.Fatal("proxy: ", err)
@@ -86,9 +95,19 @@ func main() {
 
 	args := append([]string{"-foreground"}, os.Args[1:]...)
 	cmd := exec.Command(os.Args[0], args...)
-	cmd.Stdin = nil
-	cmd.Stdout = nil
+	outp, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
+	cmd.Stderr = os.Stderr
 	cmd.Start()
+	b, err := ioutil.ReadAll(outp)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(b) == 0 {
+		os.Exit(1)
+	}
 	pid := cmd.Process.Pid
 	if strings.HasSuffix(os.Getenv("SHELL"), "csh") {
 		fmt.Printf("setenv http_proxy %s;\n", proxyAddr)
