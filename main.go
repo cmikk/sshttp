@@ -44,6 +44,14 @@ func runWithConfig(pc proxyConfig, command []string) error {
 }
 
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(),
+			"Usage: %s [options] [user@]hostname [command ...]\n"+
+				"       %s -query [options] [command ...]\n"+
+				"       %s -kill [-query]\n",
+			os.Args[0], os.Args[0], os.Args[0])
+		flag.PrintDefaults()
+	}
 	u, err := user.Current()
 	if err != nil {
 		log.Fatal("Could not determine current user:", err.Error())
