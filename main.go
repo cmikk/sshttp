@@ -59,7 +59,6 @@ func main() {
 
 	username := flag.String("user", u.Username, "Username on server")
 	port := flag.Int("port", 8123, "Local proxy port")
-	foreground := flag.Bool("foreground", false, "Run in foreground")
 	kill := flag.Bool("kill", false, "Kill running sshttp")
 	query := flag.Bool("query", false, "Use existing sshttp proxy")
 
@@ -128,7 +127,20 @@ func main() {
 		hostname = l[1]
 	}
 
-	if len(command) > 0 || *foreground {
+	// When starting a proxy process to run in the background, we use
+	// an environment variable set by the parent process to distinguish
+	// the child invocation from the parent.
+	//
+	// In C, we could use the differing return values from fork() for
+	// this purpose, but cleanly running a detached background clone of
+	// ourselves in go requires re-executing ourselves, which hides the
+	// fork() result.
+	bgProxy := (os.Getenv(fmt.Sprintf("SSHTTP_%d", os.Getppid())) != "")
+
+	if len(command) > 0 || bgProxy {
+		// We are running a command or a background proxy version of
+		// ourselves. In either case, we need to set up the ssh client
+		// connection and HTTP listener.
 		sshc, err := sshClient(*username, hostname)
 		if err != nil {
 			log.Fatal(err)
@@ -139,14 +151,13 @@ func main() {
 			log.Fatal("http: ", err)
 		}
 
-		if *foreground {
-			//
-			// Write a zero-width space to stdout as a signal to our
-			// caller that we have successfully set up the ssh connection
-			// and http proxy listener. If called manually with -foreground,
-			// this space is invisible to the user.
-			//
-			os.Stdout.Write([]byte("\uFEFF"))
+		if bgProxy {
+			// If we are running the background proxy version of
+			// ourselves, we inform our parent of our successful
+			// startup by printing the string "OK" to Stdout, then
+			// start the proxy process, and exit when that finishes
+			// or fails..
+			os.Stdout.Write([]byte("OK\n"))
 			os.Stdout.Close()
 			err := httpProxy(sshc, l)
 			if err != nil {
@@ -155,6 +166,9 @@ func main() {
 			return
 		}
 
+		// Otherwise, if we are running the command directly,
+		// we start the proxy process in a separate goroutine,
+		// then run the command with the proper environment.
 		go func() {
 			log.Fatal("proxy: ", httpProxy(sshc, l))
 		}()
@@ -167,7 +181,14 @@ func main() {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-foreground",
+	// If we reach here, we are starting up a proxy process in the
+	// background. To do this, we set our sentinel environment variable
+	// and run ourselves (os.Args[0]) with the desired listener and ssh
+	// options. Then we wait for the child process to notify us that it
+	// has started up correctly, print the configuration for using the
+	// child process, then exit.
+	os.Setenv(fmt.Sprintf("SSHTTP_%d", os.Getpid()), "1")
+	cmd := exec.Command(os.Args[0],
 		"-port", strconv.FormatInt(int64(*port), 10),
 		"-user", *username,
 		hostname)
