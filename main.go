@@ -53,7 +53,7 @@ func main() {
 	port := flag.Int("port", 8123, "Local proxy port")
 	foreground := flag.Bool("foreground", false, "Run in foreground")
 	kill := flag.Bool("kill", false, "Kill running sshttp")
-	query := flag.Bool("query", false, "Query running sshttp for proxy config")
+	query := flag.Bool("query", false, "Use existing sshttp proxy")
 
 	flag.Parse()
 
