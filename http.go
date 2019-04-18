@@ -19,10 +19,10 @@ func proxyconn(r io.ReadCloser, w io.Writer) {
 	r.Close()
 }
 
-func connectProxy(sshc *ssh.Client) http.HandlerFunc {
+func connectHandler(sshc *ssh.Client, dh http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "CONNECT" {
-			http.DefaultServeMux.ServeHTTP(w, r)
+			dh.ServeHTTP(w, r)
 			return
 		}
 		host := r.URL.Host
@@ -63,14 +63,17 @@ func httpProxy(sshc *ssh.Client, l net.Listener) error {
 		Director:  func(r *http.Request) {},
 		Transport: &http.Transport{Dial: sshc.Dial},
 	}
+	mux := http.NewServeMux()
 
-	http.Handle("/", &proxy)
-	http.Handle("/config", jsonHandler(&proxyConfig{
+	mux.Handle("/", &proxy)
+	mux.Handle("/config", jsonHandler(&proxyConfig{
 		ProxyAddr: l.Addr().String(),
 		ProxyPid:  os.Getpid(),
 	}))
 
-	return http.Serve(l, connectProxy(sshc))
+	// connectHandler must be spliced in here because the CONNECT
+	// method URI has no "/" which means mux will not see it.
+	return http.Serve(l, connectHandler(sshc, mux))
 }
 
 func queryConfig(port int) (pc proxyConfig, err error) {
