@@ -56,7 +56,7 @@ func main() {
 	}
 	u, err := user.Current()
 	if err != nil {
-		log.Fatal("Could not determine current user:", err.Error())
+		log.Fatal("Could not determine current user: ", err.Error())
 	}
 
 	username := flag.String("user", u.Username, "Username on server")
@@ -75,7 +75,7 @@ func main() {
 
 		if *kill {
 			if err = syscall.Kill(pc.ProxyPid, syscall.SIGKILL); err != nil {
-				log.Fatal("Kill failed:", err.Error())
+				log.Fatal("Kill failed: ", err.Error())
 			}
 			return
 		}
@@ -84,7 +84,7 @@ func main() {
 		if len(command) > 0 {
 			if err = runWithConfig(pc, command); err != nil {
 				if _, ok := err.(*exec.ExitError); !ok {
-					log.Println("command:", err)
+					log.Println("command: ", err)
 				}
 				os.Exit(1)
 			}
@@ -107,7 +107,7 @@ func main() {
 		}
 		err = syscall.Kill(pid, syscall.SIGKILL)
 		if err != nil {
-			log.Fatal("Kill failed:", err.Error())
+			log.Fatal("Kill failed: ", err.Error())
 		}
 		return
 	}
