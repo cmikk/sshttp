@@ -94,9 +94,13 @@ func main() {
 	}
 
 	if *kill {
-		pid, err := strconv.Atoi(os.Getenv("SSHTTP_PID"))
+		envpid := os.Getenv("SSHTTP_PID")
+		if envpid == "" {
+			log.Fatal("SSHTTP_PID not set, exiting.")
+		}
+		pid, err := strconv.Atoi(envpid)
 		if err != nil {
-			log.Fatal("Invalid or missing SSHTTP_PID:", err.Error())
+			log.Fatalf("Invalid SSHTTP_PID value '%s': %v", envpid, err)
 		}
 		err = syscall.Kill(pid, syscall.SIGKILL)
 		if err != nil {
