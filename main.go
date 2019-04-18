@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"golang.org/x/crypto/ssh"
 )
 
 type proxyConfig struct {
@@ -64,14 +66,15 @@ func main() {
 
 	flag.Parse()
 
+	var pc proxyConfig
 	if *query {
-		pc, err := queryConfig(*port)
+		pc, err = queryConfig(*port)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		if *kill {
-			if err := syscall.Kill(pc.ProxyPid, syscall.SIGKILL); err != nil {
+			if err = syscall.Kill(pc.ProxyPid, syscall.SIGKILL); err != nil {
 				log.Fatal("Kill failed:", err.Error())
 			}
 			return
@@ -79,7 +82,7 @@ func main() {
 
 		command := flag.Args()
 		if len(command) > 0 {
-			if err := runWithConfig(pc, command); err != nil {
+			if err = runWithConfig(pc, command); err != nil {
 				if _, ok := err.(*exec.ExitError); !ok {
 					log.Println("command:", err)
 				}
@@ -92,12 +95,13 @@ func main() {
 		return
 	}
 
+	pid := os.Getpid()
 	if *kill {
 		envpid := os.Getenv("SSHTTP_PID")
 		if envpid == "" {
 			log.Fatal("SSHTTP_PID not set, exiting.")
 		}
-		pid, err := strconv.Atoi(envpid)
+		pid, err = strconv.Atoi(envpid)
 		if err != nil {
 			log.Fatalf("Invalid SSHTTP_PID value '%s': %v", envpid, err)
 		}
@@ -108,10 +112,8 @@ func main() {
 		return
 	}
 
-	pc := proxyConfig{
-		ProxyAddr: fmt.Sprintf("localhost:%d", *port),
-		ProxyPid:  os.Getpid(),
-	}
+	pc.ProxyAddr = fmt.Sprintf("localhost:%d", *port)
+	pc.ProxyPid = pid
 
 	hostname := flag.Arg(0)
 
@@ -141,12 +143,15 @@ func main() {
 		// We are running a command or a background proxy version of
 		// ourselves. In either case, we need to set up the ssh client
 		// connection and HTTP listener.
-		sshc, err := sshClient(*username, hostname)
+		var sshc *ssh.Client
+		var l net.Listener
+
+		sshc, err = sshClient(*username, hostname)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		l, err := net.Listen("tcp", pc.ProxyAddr)
+		l, err = net.Listen("tcp", pc.ProxyAddr)
 		if err != nil {
 			log.Fatal("http: ", err)
 		}
@@ -159,7 +164,7 @@ func main() {
 			// or fails..
 			os.Stdout.Write([]byte("OK\n"))
 			os.Stdout.Close()
-			err := httpProxy(sshc, l)
+			err = httpProxy(sshc, l)
 			if err != nil {
 				log.Fatal("proxy: ", err)
 			}
@@ -172,7 +177,7 @@ func main() {
 		go func() {
 			log.Fatal("proxy: ", httpProxy(sshc, l))
 		}()
-		if err := runWithConfig(pc, command); err != nil {
+		if err = runWithConfig(pc, command); err != nil {
 			if _, ok := err.(*exec.ExitError); !ok {
 				log.Println("command: ", err)
 			}
