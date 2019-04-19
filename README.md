@@ -29,3 +29,10 @@ An existing sshttp proxy can be used conveniently with:
 or used to set up proxy environment variables with:
 
 	eval $(sshttp -query)
+
+The proxy environment can be cleaned up with:
+
+	eval $(sshttp -clear)
+
+The -clear option can be combined with -kill to shut down the running proxy
+at the same time.

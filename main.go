@@ -33,6 +33,16 @@ func printConfig(pc proxyConfig) {
 	fmt.Printf("echo sshttp running, pid %d;\n", pc.ProxyPid)
 }
 
+func clearConfig() {
+	fmtstr := "unset %s;\n"
+	if strings.HasSuffix(os.Getenv("SHELL"), "csh") {
+		fmtstr = "unsetenv %s;\n"
+	}
+	for _, v := range []string{"http_proxy", "https_proxy", "SSHTTP_PID"} {
+		fmt.Printf(fmtstr, v)
+	}
+}
+
 func runWithConfig(pc proxyConfig, command []string) {
 	os.Setenv("http_proxy", pc.ProxyAddr)
 	os.Setenv("https_proxy", pc.ProxyAddr)
@@ -54,8 +64,9 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(),
 			"Usage: %s [options] [user@]hostname [command ...]\n"+
 				"       %s -query [options] [command ...]\n"+
-				"       %s -kill [-query]\n",
-			os.Args[0], os.Args[0], os.Args[0])
+				"       %s -kill [-query]\n"+
+				"       %s -clear\n",
+			os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 		flag.PrintDefaults()
 	}
 	u, err := user.Current()
@@ -67,6 +78,7 @@ func main() {
 	port := flag.Int("port", 8123, "Local proxy port")
 	kill := flag.Bool("kill", false, "Kill running sshttp")
 	query := flag.Bool("query", false, "Use existing sshttp proxy")
+	clear := flag.Bool("clear", false, "Print commands to clear proxy environment")
 
 	flag.Parse()
 
@@ -78,6 +90,13 @@ func main() {
 	epid, err := strconv.Atoi(os.Getenv("SSHTTP_PID"))
 	if err == nil {
 		pc.ProxyPid = epid
+	}
+
+	if *clear {
+		clearConfig()
+		if !*kill {
+			return
+		}
 	}
 
 	if *query {
